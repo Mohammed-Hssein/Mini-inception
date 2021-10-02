@@ -10,3 +10,8 @@ This is an implementation of a simple version of the famous `Inception` neural n
 The deep learning framwork used here is tansorflow. We will explore the advantage of using the `Model subclassing API`.
 
 
+```bash
+python3 main.py
+
+```
+
