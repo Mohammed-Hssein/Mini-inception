@@ -1,6 +1,7 @@
 #main script to launch training
 
 import os, pickle, time
+import argparse
 import numpy as np
 import tensorflow as tf
 from src.classes import *
@@ -39,7 +40,7 @@ def save_model(model):
     """
     """
     path = mk_model()
-    model.save(path, saving_format="tf")
+    model.save(path, save_format="tf")
     print("MODEL SAVED SUCCESSFULLY !")
     return
 
@@ -59,7 +60,14 @@ def save_training_info(train_loss, val_loss):
     
     return
 
-
+def prepare_tensorboard_writers():
+    """
+    """
+    path_train = os.path.join(os.getcwd(),os.path.join("tmp", os.path.join("tb-logs", "train")))
+    path_test = os.path.join(os.getcwd(),os.path.join("tmp", os.path.join("tb-logs", "val")))
+    train_writer = tf.summary.create_file_writer(path_train)
+    test_writer = tf.summary.create_file_writer(path_test)
+    return train_writer, test_writer
 
 #Defining some variables
 #Instantiate an optimizer to train the model.
@@ -77,7 +85,7 @@ val_acc_metric   = tf.keras.metrics.CategoricalAccuracy()
 #test_writer  = tf.summary.create_file_writer('logs/test/')
 
 
-def main(model_object, training_data, validation_data, num_epochs=3,  freq_train=10, freq_val=2):
+def main(model_object, training_data, validation_data, writers, num_epochs, freq_train, freq_val):
     """
     main loop
     """
@@ -88,6 +96,8 @@ def main(model_object, training_data, validation_data, num_epochs=3,  freq_train
     validation_values = list()
     validation_values_batch = list()
     time_per_epoch = list()
+    train_writer = writers[0]
+    val_writer = writers[-1]
 
     for epoch in range(num_epochs):
         start_time = time.time()
@@ -115,6 +125,12 @@ def main(model_object, training_data, validation_data, num_epochs=3,  freq_train
             grads = tape.gradient(train_loss_value, model_object.trainable_weights)
             #update weights
             optimizer.apply_gradients(zip(grads, model_object.trainable_weights))
+
+            #Write to tensorboard ....
+            with train_writer.as_default():
+                batch_train_step = tf.convert_to_tensor(batch_train_step, dtype=tf.int64)
+                tf.summary.scalar('loss', train_loss_value, step=batch_train_step)
+                tf.summary.scalar('accuracy', train_acc_metric.result(), step=batch_train_step)
     
         training_values.append(sum(training_values_batch)/len(training_values_batch))
         #validation loss
@@ -135,6 +151,11 @@ def main(model_object, training_data, validation_data, num_epochs=3,  freq_train
                 ))
             else: 
                 continue
+            #Write to tensorboard        
+            with val_writer.as_default():
+                batch_val_step = tf.convert_to_tensor(batch_val_step, dtype=tf.int64)
+                tf.summary.scalar('val loss', val_loss_value, step=batch_val_step)
+                tf.summary.scalar('val accuracy', val_acc_metric.result(), step=batch_val_step)
 
         validation_values.append(sum(validation_values_batch)/len(validation_values_batch))
 
@@ -154,10 +175,28 @@ def main(model_object, training_data, validation_data, num_epochs=3,  freq_train
 
 
 if __name__ == '__main__':
-
-    batch_size = 128
-    epochs = 1
-    buffer_size=1024
+    #parse arguments from the command line
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--epochs', dest='epochs', type=int, help="epochs to use to train the network")
+    parser.add_argument('--batch-size', dest='batch_size', type=int, help='batch size to use')
+    parser.add_argument('--buffer-size', dest='buffer_size', type=int, default=1024, help="buffer size")
+    parser.add_argument('--freq-display-train',
+                    dest='freq_display_train',
+                    type=int, 
+                    default=20,
+                    help="Frequency of printing the training loss for monitoring purpose")
+    parser.add_argument('--freq-display-val',
+                    dest="freq_display_val",
+                    type=int,
+                    default=40,
+                    help="Frequency of printing the validation loss")
+    
+    args = parser.parse_args()
+    batch_size = args.batch_size
+    epochs = args.epochs
+    buffer_size=args.buffer_size
+    freq_train = args.freq_display_train
+    freq_val = args.freq_display_val
 
     print("Started ! \n")
     print("making tmp folder")
@@ -176,12 +215,15 @@ if __name__ == '__main__':
                                             batch_size=batch_size,
                                             buffer_size=buffer_size)
 
+    print("Preparing tensorboard writers .... ")
+    train_writer, test_writer = prepare_tensorboard_writers()
     print("Start training .... ")
     main(model_object=inception_model, 
         training_data=train_dataset, 
         validation_data=val_dataset, 
-        num_epochs=1,  
-        freq_train=10, 
-        freq_val=5)
+        num_epochs=epochs,
+        writers=(train_writer, test_writer), 
+        freq_train=freq_train, 
+        freq_val=freq_val)
 
     print("done !") 
