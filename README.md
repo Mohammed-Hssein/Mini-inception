@@ -12,7 +12,7 @@ To run the code, just write on a bash shell the following command :
 
 ```bash
 python3 main.py --batch-size=<your_value> --epochs=<your_value> --buffer-size=<optional_argument>
---freq-display-train=<your_value> --freq-display-val=<your_value>
+                --freq-display-train=<your_value> --freq-display-val=<your_value>
 
 ```
 
